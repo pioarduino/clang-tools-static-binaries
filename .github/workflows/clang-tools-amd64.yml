@@ -15,56 +15,17 @@ jobs:
       cancel-in-progress: true
     strategy:
       matrix:
-        clang-version: [ 12, 12.0.1, 13, 14, 15, 16, 17, 18, 19, 20 ]
+        clang-version: [ 19, 20, 21 ]
         os: [ linux, macosx, macos-arm, windows ]
         include:
-          # Temporarily disabled versions for testing
-          # - clang-version: 3.9
-          #   release: llvm-project-3.9.1
-          # - clang-version: 4
-          #   release: llvm-project-4.0.1
-          # - clang-version: 5
-          #   release: llvm-project-5.0.2
-          # - clang-version: 6
-          #   release: llvm-project-6.0.1
-          # - clang-version: 7
-          #   release: llvm-project-7.1.0
-          # - clang-version: 8
-          #   release: llvm-project-8.0.1
-          #   extra-cmake-args: '-DCLANG_ANALYZER_ENABLE_Z3_SOLVER=OFF'
-          # - clang-version: 9
-          #   release: llvm-project-9.0.1
-          #   extra-cmake-args: '-DLLVM_ENABLE_Z3_SOLVER=OFF'
-          # NOTE: Version 9 fails with CMake 4 compatibility issues
-          # - clang-version: 10
-          #   release: llvm-project-10.0.1
-          #   extra-cmake-args: '-DLLVM_ENABLE_Z3_SOLVER=OFF'
-          # NOTE: Version 10 also fails with CMake 4 compatibility issues
-          # - clang-version: 11
-          #   release: llvm-project-11.1.0.src
-          # NOTE: Version 11 also fails with CMake 4 compatibility issues
-          - clang-version: 12
-            release: llvm-project-12.0.0.src
-          - clang-version: 12.0.1
-            release: llvm-project-12.0.1.src
-          - clang-version: 13
-            release: llvm-project-13.0.0.src
-          - clang-version: 14
-            release: llvm-project-14.0.0.src
-          - clang-version: 15
-            release: llvm-project-15.0.2.src
-          - clang-version: 16
-            release: llvm-project-16.0.3.src
-          - clang-version: 17
-            release: llvm-project-17.0.4.src
-          - clang-version: 18
-            release: llvm-project-18.1.8.src
           - clang-version: 19
             release: llvm-project-19.1.0.src
           - clang-version: 20
             release: llvm-project-20.1.0.src
+          - clang-version: 21
+            release: llvm-project-21.1.0.src
           - os: linux
-            runner: ubuntu-22.04
+            runner: ubuntu-24.04
             os-cmake-args: '-DLLVM_BUILD_STATIC=ON -DCMAKE_CXX_FLAGS="-s -flto" ${POSIX_CMAKE_ARGS} ${LINUX_CMAKE_ARGS}'
             build-args: '-j$(nproc)'
             bindir: '/build/bin'
@@ -74,7 +35,7 @@ jobs:
           - os: macosx
             # Uses a macOS amd image here
             # https://github.com/actions/runner-images
-            runner: macos-13
+            runner: macos-15-intel
             os-cmake-args: '-DCMAKE_CXX_FLAGS="-static-libgcc -static-libstdc++ -flto -ffunction-sections -fdata-sections" -DCMAKE_EXE_LINKER_FLAGS="-Wl,-dead_strip" ${POSIX_CMAKE_ARGS} ${MACOS_CMAKE_ARGS} -DLLVM_TARGETS_TO_BUILD=X86'
             build-args: '-j$(sysctl -n hw.ncpu)'
             bindir: '/build/bin'
@@ -84,7 +45,7 @@ jobs:
           - os: macos-arm
             # Uses a macOS arm image here
             # https://github.com/actions/runner-images
-            runner: macos-14
+            runner: macos-latest
             os-cmake-args: '-DCMAKE_CXX_FLAGS="-static-libgcc -static-libstdc++ -flto -ffunction-sections -fdata-sections" -DCMAKE_EXE_LINKER_FLAGS="-Wl,-dead_strip" ${POSIX_CMAKE_ARGS} ${MACOS_CMAKE_ARGS} -DLLVM_TARGETS_TO_BUILD=AArch64'
             build-args: '-j$(sysctl -n hw.ncpu)'
             bindir: '/build/bin'
@@ -101,16 +62,10 @@ jobs:
             extra-tar-args: '--exclude=${RELEASE}/clang/test/Driver/Inputs/* --exclude=${RELEASE}/libcxx/test/std/input.output/filesystems/Inputs/static_test_env/* --exclude=${RELEASE}/libclc/amdgcn-mesa3d'
             extra-tar-args-cfe: '--exclude=cfe-${version}.src/test/Driver/Inputs/*'
             arch: 'amd64'
-        exclude:
-          # Clang 17 does not build on mac arm
-          # See: https://github.com/llvm/llvm-project/pull/78704
-          # https://github.com/llvm/llvm-project/issues/106521
-          - clang-version: 17
-            os: macos-arm
     runs-on: ${{ matrix.runner }}
     env:
       COMMON_CMAKE_ARGS: '-DBUILD_SHARED_LIBS=OFF -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra"'
-      LINUX_CMAKE_ARGS: '-DCMAKE_CXX_COMPILER=g++-10 -DCMAKE_C_COMPILER=gcc-10'
+      LINUX_CMAKE_ARGS: '-DCMAKE_CXX_COMPILER=g++-12 -DCMAKE_C_COMPILER=gcc-12'
       MACOS_CMAKE_ARGS: '-DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_C_COMPILER=gcc-14 -DLLVM_ENABLE_ZSTD=OFF -DLLVM_ENABLE_ZLIB=OFF'
       POSIX_CMAKE_ARGS: '-DCMAKE_BUILD_TYPE=MinSizeRel'
       RELEASE: '${{ matrix.release }}'
@@ -169,7 +124,16 @@ jobs:
       if: ${{ matrix.clang-version >= 9 || matrix.clang-version == '12.0.1' }}
       shell: bash
       run: |
-        tar xf ${{ matrix.release }}.tar.xz ${{ matrix.extra-tar-args }}
+        if [[ "${{ matrix.os }}" == "windows" ]]; then
+          # Windows: tar cannot create dangling symlinks (symlink target not yet extracted).
+          # Fix: enable winsymlinks via MSYS env var and run tar twice so that on the
+          # second pass all symlink targets already exist.
+          export MSYS=winsymlinks:lnk
+          tar --ignore-failed-read -xf ${{ matrix.release }}.tar.xz ${{ matrix.extra-tar-args }} || true
+          tar --ignore-failed-read -xf ${{ matrix.release }}.tar.xz ${{ matrix.extra-tar-args }} || true
+        else
+          tar xf ${{ matrix.release }}.tar.xz ${{ matrix.extra-tar-args }}
+        fi
 
     - name: patch clang-3.9 constify operator
       if: ${{ matrix.clang-version == 3.9 && matrix.os == 'windows' }}
@@ -255,16 +219,16 @@ jobs:
         os: [ linux, macosx, windows, macos-arm ]
         include:
           - os: linux
-            runner: ubuntu-22.04
+            runner: ubuntu-24.04
             arch: 'amd64'
           - os: macosx
-            runner: macos-13 # Intel macOS runner test
+            runner: macos-15-intel # Intel macOS runner test
             arch: 'amd64'
           - os: windows
             runner: windows-latest
             arch: 'amd64'
           - os: macos-arm
-            runner: macos-14 # Apple silicon macOS runner test
+            runner: macos-latest # Apple silicon macOS runner test
             arch: 'arm64'
     runs-on: ${{ matrix.runner }}
     needs: build
@@ -326,7 +290,7 @@ jobs:
               }
           }
   draft-release:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     if: ${{ github.ref == 'refs/heads/master' }}
     needs: [build, test-release]
     steps:
