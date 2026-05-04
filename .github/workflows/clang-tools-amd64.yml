@@ -15,7 +15,7 @@ jobs:
       cancel-in-progress: true
     strategy:
       matrix:
-        clang-version: [ 19, 20, 21 ]
+        clang-version: [ 19, 20, 21, 22 ]
         os: [ linux, macosx, macos-arm, windows ]
         include:
           - clang-version: 19
@@ -24,6 +24,8 @@ jobs:
             release: llvm-project-20.1.0.src
           - clang-version: 21
             release: llvm-project-21.1.0.src
+          - clang-version: 22
+            release: llvm-project-22.1.0.src
           - os: linux
             runner: ubuntu-24.04
             os-cmake-args: '-DLLVM_BUILD_STATIC=ON -DCMAKE_CXX_FLAGS="-s -flto" ${POSIX_CMAKE_ARGS} ${LINUX_CMAKE_ARGS}'
