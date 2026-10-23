@@ -48,8 +48,8 @@ jobs:
             dotexe: ''
             shacmd: 'shasum -a512'
             arch: 'amd64'
-          - os: macos-15
-            runner: macos-latest
+          - os: macos-arm
+            runner: macos-15
             os-cmake-args: '-DCMAKE_CXX_FLAGS="-static-libgcc -static-libstdc++ -flto -ffunction-sections -fdata-sections" -DCMAKE_EXE_LINKER_FLAGS="-Wl,-dead_strip" ${POSIX_CMAKE_ARGS} ${MACOS_CMAKE_ARGS} -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 -DLLVM_TARGETS_TO_BUILD=AArch64'
             build-args: '-j$(sysctl -n hw.ncpu)'
             bindir: '/build/bin'
