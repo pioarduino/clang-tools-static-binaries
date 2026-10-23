@@ -1,4 +1,4 @@
-name: clang-tools-static-amd64
+name: clang-tools-static
 
 on:
   push:
@@ -15,17 +15,19 @@ jobs:
       cancel-in-progress: true
     strategy:
       matrix:
-        clang-version: [ 19, 20, 21, 22 ]
+        clang-version: [ 19, 20, 21, 22, 23 ]
         os: [ linux, macosx, macos-arm, windows ]
         include:
           - clang-version: 19
-            release: llvm-project-19.1.0.src
+            release: llvm-project-19.1.1.src
           - clang-version: 20
             release: llvm-project-20.1.0.src
           - clang-version: 21
-            release: llvm-project-21.1.0.src
+            release: llvm-project-21.1.6.src
           - clang-version: 22
-            release: llvm-project-22.1.0.src
+            release: llvm-project-22.1.8.src
+          - clang-version: 23
+            release: llvm-project-23.1.4.src
           - os: linux
             runner: ubuntu-24.04
             os-cmake-args: '-DLLVM_BUILD_STATIC=ON -DCMAKE_CXX_FLAGS="-s -flto" ${POSIX_CMAKE_ARGS} ${LINUX_CMAKE_ARGS}'
@@ -224,13 +226,13 @@ jobs:
             runner: ubuntu-24.04
             arch: 'amd64'
           - os: macosx
-            runner: macos-15-intel # Intel macOS runner test
+            runner: macos-15-intel
             arch: 'amd64'
           - os: windows
             runner: windows-latest
             arch: 'amd64'
           - os: macos-arm
-            runner: macos-latest # Apple silicon macOS runner test
+            runner: macos-latest
             arch: 'arm64'
     runs-on: ${{ matrix.runner }}
     needs: build
