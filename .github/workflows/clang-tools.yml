@@ -1,4 +1,4 @@
-name: clang-tools-static-amd64
+name: clang-tools-static
 
 on:
   push:
@@ -15,17 +15,15 @@ jobs:
       cancel-in-progress: true
     strategy:
       matrix:
-        clang-version: [ 19, 20, 21, 22 ]
-        os: [ linux, macosx, macos-arm, windows ]
+        clang-version: [ 21, 22, 23 ]
+        os: [ linux, linux-arm, macosx, macos-arm, windows, windows-arm ]
         include:
-          - clang-version: 19
-            release: llvm-project-19.1.0.src
-          - clang-version: 20
-            release: llvm-project-20.1.0.src
           - clang-version: 21
-            release: llvm-project-21.1.0.src
+            release: llvm-project-21.1.6.src
           - clang-version: 22
-            release: llvm-project-22.1.0.src
+            release: llvm-project-22.1.8.src
+          - clang-version: 23
+            release: llvm-project-23.1.4.src
           - os: linux
             runner: ubuntu-24.04
             os-cmake-args: '-DLLVM_BUILD_STATIC=ON -DCMAKE_CXX_FLAGS="-s -flto" ${POSIX_CMAKE_ARGS} ${LINUX_CMAKE_ARGS}'
@@ -34,21 +32,25 @@ jobs:
             dotexe: ''
             shacmd: 'sha512sum'
             arch: 'amd64'
+          - os: linux-arm
+            runner: ubuntu-24.04-arm
+            os-cmake-args: '-DLLVM_BUILD_STATIC=ON -DCMAKE_CXX_FLAGS="-s -flto" ${POSIX_CMAKE_ARGS} ${LINUX_CMAKE_ARGS} -DLLVM_TARGETS_TO_BUILD=AArch64'
+            build-args: '-j$(nproc)'
+            bindir: '/build/bin'
+            dotexe: ''
+            shacmd: 'sha512sum'
+            arch: 'arm64'
           - os: macosx
-            # Uses a macOS amd image here
-            # https://github.com/actions/runner-images
             runner: macos-15-intel
-            os-cmake-args: '-DCMAKE_CXX_FLAGS="-static-libgcc -static-libstdc++ -flto -ffunction-sections -fdata-sections" -DCMAKE_EXE_LINKER_FLAGS="-Wl,-dead_strip" ${POSIX_CMAKE_ARGS} ${MACOS_CMAKE_ARGS} -DLLVM_TARGETS_TO_BUILD=X86'
+            os-cmake-args: '-DCMAKE_CXX_FLAGS="-static-libgcc -static-libstdc++ -flto -ffunction-sections -fdata-sections" -DCMAKE_EXE_LINKER_FLAGS="-Wl,-dead_strip" ${POSIX_CMAKE_ARGS} ${MACOS_CMAKE_ARGS} -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DLLVM_TARGETS_TO_BUILD=X86'
             build-args: '-j$(sysctl -n hw.ncpu)'
             bindir: '/build/bin'
             dotexe: ''
             shacmd: 'shasum -a512'
             arch: 'amd64'
           - os: macos-arm
-            # Uses a macOS arm image here
-            # https://github.com/actions/runner-images
             runner: macos-latest
-            os-cmake-args: '-DCMAKE_CXX_FLAGS="-static-libgcc -static-libstdc++ -flto -ffunction-sections -fdata-sections" -DCMAKE_EXE_LINKER_FLAGS="-Wl,-dead_strip" ${POSIX_CMAKE_ARGS} ${MACOS_CMAKE_ARGS} -DLLVM_TARGETS_TO_BUILD=AArch64'
+            os-cmake-args: '-DCMAKE_CXX_FLAGS="-static-libgcc -static-libstdc++ -flto -ffunction-sections -fdata-sections" -DCMAKE_EXE_LINKER_FLAGS="-Wl,-dead_strip" ${POSIX_CMAKE_ARGS} ${MACOS_CMAKE_ARGS} -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 -DLLVM_TARGETS_TO_BUILD=AArch64'
             build-args: '-j$(sysctl -n hw.ncpu)'
             bindir: '/build/bin'
             dotexe: ''
@@ -62,13 +64,21 @@ jobs:
             dotexe: '.exe'
             shacmd: 'sha512sum.exe'
             extra-tar-args: '--exclude=${RELEASE}/clang/test/Driver/Inputs/* --exclude=${RELEASE}/libcxx/test/std/input.output/filesystems/Inputs/static_test_env/* --exclude=${RELEASE}/libclc/amdgcn-mesa3d'
-            extra-tar-args-cfe: '--exclude=cfe-${version}.src/test/Driver/Inputs/*'
             arch: 'amd64'
+          - os: windows-arm
+            runner: windows-11-arm
+            os-cmake-args: '-A ARM64 -DCMAKE_CXX_FLAGS="/MP /std:c++14" -DLLVM_USE_CRT_MINSIZEREL="MT" -DLLVM_TARGETS_TO_BUILD=AArch64'
+            build-args: '--config MinSizeRel'
+            bindir: '/build/MinSizeRel/bin'
+            dotexe: '.exe'
+            shacmd: 'sha512sum.exe'
+            extra-tar-args: '--exclude=${RELEASE}/clang/test/Driver/Inputs/* --exclude=${RELEASE}/libcxx/test/std/input.output/filesystems/Inputs/static_test_env/* --exclude=${RELEASE}/libclc/amdgcn-mesa3d'
+            arch: 'arm64'
     runs-on: ${{ matrix.runner }}
     env:
       COMMON_CMAKE_ARGS: '-DBUILD_SHARED_LIBS=OFF -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra"'
-      LINUX_CMAKE_ARGS: '-DCMAKE_CXX_COMPILER=g++-12 -DCMAKE_C_COMPILER=gcc-12'
-      MACOS_CMAKE_ARGS: '-DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_C_COMPILER=gcc-14 -DLLVM_ENABLE_ZSTD=OFF -DLLVM_ENABLE_ZLIB=OFF'
+      LINUX_CMAKE_ARGS: '-DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_C_COMPILER=gcc-14'
+      MACOS_CMAKE_ARGS: '-DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_C_COMPILER=gcc-14 -DLLVM_ENABLE_ZSTD=OFF -DLLVM_ENABLE_ZLIB=OFF'
       POSIX_CMAKE_ARGS: '-DCMAKE_BUILD_TYPE=MinSizeRel'
       RELEASE: '${{ matrix.release }}'
       suffix: '${{ matrix.clang-version }}_${{ matrix.os }}-${{ matrix.arch }}'
@@ -76,57 +86,17 @@ jobs:
     - name: print system info on macos and linux
       run: |
         uname -a || systeminfo
-      if: ${{ matrix.os != 'windows' }}
-    - name: download patches
-      # we download a tarball of this repo, as the presence of a .git directory leaks
-      # the commit hash of this repository into the clang binaries
-      shell: bash
-      run: curl -L https://github.com/${{ github.repository }}/archive/${{ github.ref }}.tar.gz | tar xvz --strip 1
+      if: ${{ !startsWith(matrix.os, 'windows') }}
     - name: get llvm-project
-      if: ${{ matrix.clang-version < 7 }}
-      shell: bash
-      run: |
-        version=${RELEASE##llvm-project-}
-        curl -LO https://releases.llvm.org/${version}/llvm-${version}.src.tar.xz
-        curl -LO https://releases.llvm.org/${version}/cfe-${version}.src.tar.xz
-        curl -LO https://releases.llvm.org/${version}/clang-tools-extra-${version}.src.tar.xz
-    - name: get llvm-project
-      if: ${{ matrix.clang-version == 7 || matrix.clang-version == 8 }}
-      shell: bash
-      run: |
-        version=${RELEASE##llvm-project-}
-        curl -LO https://github.com/llvm/llvm-project/releases/download/llvmorg-${version}/llvm-${version}.src.tar.xz
-        curl -LO https://github.com/llvm/llvm-project/releases/download/llvmorg-${version}/cfe-${version}.src.tar.xz
-        curl -LO https://github.com/llvm/llvm-project/releases/download/llvmorg-${version}/clang-tools-extra-${version}.src.tar.xz
-    - name: get llvm-project
-      if: ${{ matrix.clang-version >= 9 || matrix.clang-version == '12.0.1' }}
       shell: bash
       run: |
         version=${RELEASE##llvm-project-}; version=${version%.src}
         curl -LO https://github.com/llvm/llvm-project/releases/download/llvmorg-${version}/${{ matrix.release }}.tar.xz
 
     - name: unpack llvm-project
-      if: ${{ matrix.clang-version < 9 }}
       shell: bash
       run: |
-        version=${RELEASE##llvm-project-}
-        tar xf llvm-${version}.src.tar.xz
-        tar xf cfe-${version}.src.tar.xz ${{ matrix.extra-tar-args-cfe }}
-        tar xf clang-tools-extra-${version}.src.tar.xz
-        mkdir ${{ matrix.release }}
-        mv llvm-${version}.src ${{ matrix.release }}/llvm
-        mv cfe-${version}.src ${{ matrix.release }}/clang
-        mv clang-tools-extra-${version}.src ${{ matrix.release }}/clang-tools-extra
-    - name: move clang 3.9 sources
-      if: ${{ matrix.clang-version == 3.9 }}
-      run: |
-        mv ${{ matrix.release }}/clang ${{ matrix.release }}/llvm/tools/clang
-        mv ${{ matrix.release }}/clang-tools-extra ${{ matrix.release }}/llvm/tools/clang/tools/extra
-    - name: unpack llvm-project
-      if: ${{ matrix.clang-version >= 9 || matrix.clang-version == '12.0.1' }}
-      shell: bash
-      run: |
-        if [[ "${{ matrix.os }}" == "windows" ]]; then
+        if [[ "${{ matrix.os }}" == windows* ]]; then
           # Windows: tar cannot create dangling symlinks (symlink target not yet extracted).
           # Fix: enable winsymlinks via MSYS env var and run tar twice so that on the
           # second pass all symlink targets already exist.
@@ -137,18 +107,6 @@ jobs:
           tar xf ${{ matrix.release }}.tar.xz ${{ matrix.extra-tar-args }}
         fi
 
-    - name: patch clang-3.9 constify operator
-      if: ${{ matrix.clang-version == 3.9 && matrix.os == 'windows' }}
-      shell: bash
-      run: patch ${{ matrix.release }}/llvm/utils/TableGen/AsmWriterEmitter.cpp windows-clang-3.9_constify-operator.patch
-    - name: patch clang-8 includes
-      if: ${{ matrix.clang-version == 8 }}
-      shell: bash
-      run: patch ${{ matrix.release }}/llvm/include/llvm/Demangle/MicrosoftDemangleNodes.h include-cstdint-string-prior-to-using-uint8_t.patch
-    - name: patch trivially-copyable clang 9/10
-      if: ${{ ( matrix.clang-version == 9 || matrix.clang-version == 10 ) && matrix.os == 'windows' }}
-      shell: bash
-      run: patch ${{ matrix.release }}/llvm/cmake/config-ix.cmake windows-clang-9-10-trivially-copyable-mismatch.patch
     - name: Patch cmake implicit link libraries on macosx
       if: ${{ matrix.os == 'macosx' || matrix.os == 'macos-arm' }}
       shell: bash
@@ -162,14 +120,14 @@ jobs:
         done
 
     - name: cmake
-      run: cmake -S ${{ matrix.release }}/llvm -B ${{ matrix.release }}/build ${{ env.COMMON_CMAKE_ARGS }} ${{ matrix.os-cmake-args }} ${{ matrix.extra-cmake-args }}
+      run: cmake -S ${{ matrix.release }}/llvm -B ${{ matrix.release }}/build ${{ env.COMMON_CMAKE_ARGS }} ${{ matrix.os-cmake-args }}
     - name: build
       run: cmake --build ${{ matrix.release }}/build ${{ matrix.build-args }} --target clang-format clang-query clang-tidy clang-apply-replacements
     - name: print dependencies
       if: ${{ matrix.os == 'macosx' || matrix.os == 'macos-arm' }}
       run: otool -L ${{ matrix.release }}/build/bin/clang-format
     - name: smoke test clang-tools (macos, linux)
-      if: ${{ matrix.os == 'macosx' || matrix.os == 'linux' || matrix.os == 'macos-arm' }}
+      if: ${{ !startsWith(matrix.os, 'windows') }}
       run: |
         cd ${{ matrix.release }}/build/bin
         ./clang-format --version
@@ -177,7 +135,7 @@ jobs:
         ./clang-tidy --version
         ./clang-apply-replacements --version
     - name: smoke test clang-tools (windows)
-      if: ${{ matrix.os == 'windows' }}
+      if: ${{ startsWith(matrix.os, 'windows') }}
       run: |
         cd ${{ matrix.release }}${{ matrix.bindir }}
         clang-format${{ matrix.dotexe }} --version
@@ -218,19 +176,25 @@ jobs:
       cancel-in-progress: true
     strategy:
       matrix:
-        os: [ linux, macosx, windows, macos-arm ]
+        os: [ linux, linux-arm, macosx, windows, macos-arm, windows-arm ]
         include:
           - os: linux
             runner: ubuntu-24.04
             arch: 'amd64'
+          - os: linux-arm
+            runner: ubuntu-24.04-arm
+            arch: 'arm64'
           - os: macosx
-            runner: macos-15-intel # Intel macOS runner test
+            runner: macos-15-intel
             arch: 'amd64'
           - os: windows
             runner: windows-latest
             arch: 'amd64'
           - os: macos-arm
-            runner: macos-latest # Apple silicon macOS runner test
+            runner: macos-latest
+            arch: 'arm64'
+          - os: windows-arm
+            runner: windows-11-arm
             arch: 'arm64'
     runs-on: ${{ matrix.runner }}
     needs: build
@@ -243,10 +207,10 @@ jobs:
           path: artifacts
           pattern: '**/*${{ env.suffix }}'
       - name: list files (macos, linux)
-        if: ${{ matrix.os == 'macosx' || matrix.os == 'linux' || matrix.os == 'macos-arm' }}
+        if: ${{ !startsWith(matrix.os, 'windows') }}
         run: ls -laR artifacts/
       - name: smoke test each clang tool (macos, linux)
-        if: ${{ matrix.os == 'macosx' || matrix.os == 'linux' || matrix.os == 'macos-arm' }}
+        if: ${{ !startsWith(matrix.os, 'windows') }}
         run: |
           cd artifacts
           # From the artifacts directory, loop over each executable
@@ -264,12 +228,12 @@ jobs:
             $tool --version
           done
       - name: List files (Windows)
-        if: ${{ matrix.os == 'windows' }}
+        if: ${{ startsWith(matrix.os, 'windows') }}
         run: |
           Get-ChildItem -Recurse artifacts | Format-List
 
       - name: Smoke test each clang tool (Windows)
-        if: ${{ matrix.os == 'windows' }}
+        if: ${{ startsWith(matrix.os, 'windows') }}
         shell: pwsh
         run: |
           Set-Location artifacts
