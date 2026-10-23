@@ -1,5 +1,8 @@
 name: clang-tools-static
 
+permissions:
+  contents: write
+
 on:
   push:
     branches: [ master ]
@@ -266,6 +269,44 @@ jobs:
         run: ls -laR .
       - name: Workaround - delete all files over 2G, above github release file upload limit
         run: find . -type f -size +2G -exec rm -v {} \;
+      - name: create tar.gz archives
+        run: |
+          set -euo pipefail
+          mkdir -p tarballs
+          count=0
+          for dir in clang-*/; do
+            [ -d "$dir" ] || continue
+            for f in "$dir"*; do
+              [ -f "$f" ] || continue
+              name=$(basename "$f")
+              case "$name" in
+                *.sha512sum|*.tar.gz) continue ;;
+              esac
+              stem="$name"
+              ext=""
+              case "$stem" in
+                *.exe) ext=".exe"; stem="${stem%.exe}" ;;
+              esac
+              base=$(printf '%s' "$stem" | sed -E 's/-[0-9]+_.*$//')
+              if [ -z "$base" ] || [ "$base" = "$stem" ]; then
+                echo "::error::Cannot derive the binary name from '$name'"
+                exit 1
+              fi
+              cp "$f" "tarballs/$base$ext"
+              chmod 0755 "tarballs/$base$ext"
+              tar -C tarballs --owner=0 --group=0 --numeric-owner -czf "tarballs/$name.tar.gz" "$base$ext"
+              rm -f "tarballs/$base$ext"
+              count=$((count + 1))
+            done
+          done
+          echo "Created $count tar.gz archives"
+          test "$count" -gt 0
+          for f in tarballs/*.tar.gz; do
+            if [ "$(tar tzf "$f" | wc -l)" -ne 1 ]; then
+              echo "::error::$f must contain exactly one file"
+              exit 1
+            fi
+          done
       - name: Get short SHA
         id: sha
         run: echo "short=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
@@ -280,3 +321,9 @@ jobs:
           file_glob: true
           file: clang-*/**/*
           check_duplicates: false
+      - name: upload tar.gz archives
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release upload "${GITHUB_REF_NAME}-${GITHUB_SHA::7}" tarballs/*.tar.gz --repo "${{ github.repository }}" --clobber
