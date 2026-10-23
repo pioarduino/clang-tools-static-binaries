@@ -87,11 +87,6 @@ jobs:
       run: |
         uname -a || systeminfo
       if: ${{ !startsWith(matrix.os, 'windows') }}
-    - name: download patches
-      # we download a tarball of this repo, as the presence of a .git directory leaks
-      # the commit hash of this repository into the clang binaries
-      shell: bash
-      run: curl -L https://github.com/${{ github.repository }}/archive/${{ github.ref }}.tar.gz | tar xvz --strip 1
     - name: get llvm-project
       shell: bash
       run: |
