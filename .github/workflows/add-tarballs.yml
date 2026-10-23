@@ -1,0 +1,158 @@
+# TEMPORARY workflow - delete after the .tar.gz assets have been added to the release.
+#
+# Why: the v23 release ships raw executables named like
+#     clang-tidy-23_linux-amd64
+# but pioarduino's idf_tools.py only unpacks archives, and `pio check` expects
+# the binary to be called `clang-tidy` / `clang-tidy.exe` at the package root.
+# This workflow repackages every binary asset as
+#     clang-tidy-23_linux-amd64.tar.gz
+# containing the binary under its plain name (mode 0755), matching the v21
+# tarballs, and uploads the archives to the same release.
+#
+# Run: Actions -> "Add .tar.gz assets to release" -> tag: v23
+
+name: Add .tar.gz assets to release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (binary assets are read from and tarballs written to this release)"
+        required: true
+        default: "v23"
+      dry_run:
+        description: "Only build and verify, do not upload anything"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: add-tarballs-${{ inputs.tag }}
+  cancel-in-progress: false
+
+env:
+  GH_TOKEN: ${{ github.token }}
+  REPO: ${{ github.repository }}
+  TAG: ${{ inputs.tag }}
+  # Keep macOS metadata out of the archives if this ever runs on a macOS runner
+  COPYFILE_DISABLE: "1"
+
+jobs:
+  repack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Download binary assets
+        run: |
+          set -euo pipefail
+          mkdir -p assets
+          release_id=$(gh api "repos/$REPO/releases/tags/$TAG" --jq .id)
+          gh api --paginate "repos/$REPO/releases/$release_id/assets?per_page=100" \
+            --jq '.[] | select(.name | test("\\.(sha512sum|sha256|tar\\.gz|tgz|tar\\.xz|tar\\.bz2|zip)$") | not) | [.name, .browser_download_url] | @tsv' \
+            > assets.tsv
+          echo "Binary assets: $(wc -l < assets.tsv)"
+          while IFS=$'\t' read -r name url || [ -n "${name:-}" ]; do
+            curl -fsSL --retry 5 --retry-delay 2 -o "assets/$name" "$url"
+          done < assets.tsv
+          echo "Downloaded $(find assets -maxdepth 1 -type f | wc -l) files"
+
+      - name: Build tarballs
+        run: |
+          set -euo pipefail
+          mkdir -p work dist
+          : > dist/expected.tsv
+          count=0
+          for path in assets/*; do
+            [ -f "$path" ] || continue
+            name=$(basename "$path")
+            case "$name" in
+              *.sha512sum|*.sha256|*.tar.gz|*.tgz|*.tar.xz|*.tar.bz2|*.zip) continue ;;
+            esac
+
+            # clang-tidy-23_windows-amd64.exe -> clang-tidy.exe
+            stem="$name" ext=""
+            case "$stem" in
+              *.exe) ext=".exe"; stem="${stem%.exe}" ;;
+            esac
+            # clang-tidy-23_linux-arm-arm64 -> clang-tidy
+            base=$(printf '%s' "$stem" | sed -E 's/-[0-9]+_.*$//')
+            if [ -z "$base" ] || [ "$base" = "$stem" ]; then
+              echo "::error::Cannot derive the binary name from '$name'"
+              exit 1
+            fi
+
+            cp "$path" "work/$base$ext"
+            chmod 0755 "work/$base$ext"
+            tar -C work --owner=0 --group=0 --numeric-owner -czf "dist/$name.tar.gz" "$base$ext"
+            rm -f "work/$base$ext"
+            printf '%s\t%s\n' "$name.tar.gz" "$base$ext" >> dist/expected.tsv
+            count=$((count + 1))
+          done
+          echo "Created $count tarballs"
+          test "$count" -gt 0
+
+      - name: Verify tarballs
+        run: |
+          set -euo pipefail
+          while IFS=$'\t' read -r tgz entry || [ -n "${tgz:-}" ]; do
+            actual=$(tar tzf "dist/$tgz")
+            if [ "$actual" != "$entry" ]; then
+              echo "::error::$tgz contains '$actual', expected '$entry'"
+              exit 1
+            fi
+            mode=$(tar tvzf "dist/$tgz" | awk '{print $1}')
+            if [ "$mode" != "-rwxr-xr-x" ]; then
+              echo "::error::$tgz has mode $mode, expected -rwxr-xr-x"
+              exit 1
+            fi
+          done < dist/expected.tsv
+          echo "All tarballs contain exactly one executable with the expected name"
+
+      - name: Write checksums and manifest
+        run: |
+          set -euo pipefail
+          (cd dist && sha256sum ./*.tar.gz > SHA256SUMS && sha256sum -c SHA256SUMS)
+          python3 - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+
+          repo, tag = os.environ["REPO"], os.environ["TAG"]
+          out = {}
+          for p in sorted(Path("dist").glob("*.tar.gz")):
+              out[p.name] = {
+                  "size": p.stat().st_size,
+                  "sha256": hashlib.sha256(p.read_bytes()).hexdigest(),
+                  "url": f"https://github.com/{repo}/releases/download/{tag}/{p.name}",
+              }
+          Path("dist/tarballs.json").write_text(json.dumps(out, indent=2) + "\n")
+          print(f"Wrote dist/tarballs.json with {len(out)} entries")
+          PY
+          {
+            echo "### .tar.gz assets for \`$TAG\`"
+            echo
+            echo "| asset | size | sha256 |"
+            echo "|---|---:|---|"
+            jq -r 'to_entries[] | "| `\(.key)` | \(.value.size) | `\(.value.sha256)` |"' dist/tarballs.json
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload manifest artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tarballs-${{ inputs.tag }}
+          path: |
+            dist/tarballs.json
+            dist/SHA256SUMS
+          if-no-files-found: error
+
+      - name: Upload .tar.gz assets to the release
+        if: ${{ !inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" dist/*.tar.gz --repo "$REPO" --clobber
+          echo "Uploaded $(find dist -maxdepth 1 -name '*.tar.gz' | wc -l) tarballs to $TAG"
+
+      - name: Dry run notice
+        if: ${{ inputs.dry_run }}
+        run: echo "::notice::Dry run - tarballs were built and verified but not uploaded."
