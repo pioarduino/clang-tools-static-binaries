@@ -48,7 +48,7 @@ jobs:
             # Uses a macOS amd image here
             # https://github.com/actions/runner-images
             runner: macos-15-intel
-            os-cmake-args: '-DCMAKE_CXX_FLAGS="-static-libgcc -static-libstdc++ -flto -ffunction-sections -fdata-sections" -DCMAKE_EXE_LINKER_FLAGS="-Wl,-dead_strip" ${POSIX_CMAKE_ARGS} ${MACOS_CMAKE_ARGS} -DLLVM_TARGETS_TO_BUILD=X86'
+            os-cmake-args: '-DCMAKE_CXX_FLAGS="-static-libgcc -static-libstdc++ -flto -ffunction-sections -fdata-sections" -DCMAKE_EXE_LINKER_FLAGS="-Wl,-dead_strip" ${POSIX_CMAKE_ARGS} ${MACOS_CMAKE_ARGS} -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DLLVM_TARGETS_TO_BUILD=X86'
             build-args: '-j$(sysctl -n hw.ncpu)'
             bindir: '/build/bin'
             dotexe: ''
@@ -58,7 +58,7 @@ jobs:
             # Uses a macOS arm image here
             # https://github.com/actions/runner-images
             runner: macos-latest
-            os-cmake-args: '-DCMAKE_CXX_FLAGS="-static-libgcc -static-libstdc++ -flto -ffunction-sections -fdata-sections" -DCMAKE_EXE_LINKER_FLAGS="-Wl,-dead_strip" ${POSIX_CMAKE_ARGS} ${MACOS_CMAKE_ARGS} -DLLVM_TARGETS_TO_BUILD=AArch64'
+            os-cmake-args: '-DCMAKE_CXX_FLAGS="-static-libgcc -static-libstdc++ -flto -ffunction-sections -fdata-sections" -DCMAKE_EXE_LINKER_FLAGS="-Wl,-dead_strip" ${POSIX_CMAKE_ARGS} ${MACOS_CMAKE_ARGS} -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 -DLLVM_TARGETS_TO_BUILD=AArch64'
             build-args: '-j$(sysctl -n hw.ncpu)'
             bindir: '/build/bin'
             dotexe: ''
@@ -88,7 +88,7 @@ jobs:
     env:
       COMMON_CMAKE_ARGS: '-DBUILD_SHARED_LIBS=OFF -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra"'
       LINUX_CMAKE_ARGS: '-DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_C_COMPILER=gcc-14'
-      MACOS_CMAKE_ARGS: '-DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_C_COMPILER=gcc-14 -DLLVM_ENABLE_ZSTD=OFF -DLLVM_ENABLE_ZLIB=OFF'
+      MACOS_CMAKE_ARGS: '-DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_C_COMPILER=gcc-14 -DLLVM_ENABLE_ZSTD=OFF -DLLVM_ENABLE_ZLIB=OFF'
       POSIX_CMAKE_ARGS: '-DCMAKE_BUILD_TYPE=MinSizeRel'
       RELEASE: '${{ matrix.release }}'
       suffix: '${{ matrix.clang-version }}_${{ matrix.os }}-${{ matrix.arch }}'
